@@ -7,6 +7,11 @@
 // limbs, held weapons) inherit it through the frame hierarchy. Physics and
 // collision never see it: every frame is restored at the 3D/2D boundary
 // (Render2dStuff) and again before CGame::Process.
+//
+// Cutscene actors are CCutsceneObjects whose root frame sits at the scene
+// origin, so they are squashed around the centre of their own body parts
+// instead, all at once before RenderScene. CCutsceneHead::Render rebuilds each
+// head from its body's head bone (RwFrameGetLTM), so heads follow the squash.
 #include "plugin.h"
 #include "CVehicle.h"
 #include "CPed.h"
@@ -15,6 +20,7 @@
 #include "CTimer.h"
 #include "CReplay.h"
 #include "CCutsceneMgr.h"
+#include "CCutsceneObject.h"
 #include "eVehicleType.h"
 #include "BounceMath.h"
 #include "BeatMap.h"
@@ -170,7 +176,7 @@ CVector VehicleShift(CVehicle* vehicle) {
     if(kind!=VEHICLE_AUTOMOBILE&&kind!=VEHICLE_TRAIN) return CVector(0,0,0);
     return GroundShift(vehicle,ModelBottom(vehicle,-0.5f));
 }
-void Deform(RwFrame* frame,const CMatrix& basis,const CVector& shift) {
+template<class Basis> void Deform(RwFrame* frame,const Basis& basis,const CVector& shift) {
     for(const auto& saved:savedFrames) if(saved.frame==frame) return;
     savedFrames.push_back({frame,*RwFrameGetMatrix(frame)});
     RwMatrix matrix=DeformedMatrix(savedFrames.back().original,basis,ActiveScale());
@@ -198,6 +204,56 @@ void BeforePedRender(CPed* ped) {
     else return;
     static bool logged=false;
     if(!logged){Log("first person rendered with bounce");logged=true;}
+}
+
+// ---- cutscene actors -----------------------------------------------------
+// gta3.exe v1.0 CCutsceneHead vtable (slot 13 = Render 0x4BA800).
+constexpr uintptr_t cutsceneHeadVtable=0x5F7C08;
+
+struct ActorBounds {
+    RwV3d min{INFINITY,INFINITY,INFINITY},max{-INFINITY,-INFINITY,-INFINITY};
+    void Add(const RwV3d& p) {
+        if(!std::isfinite(p.x)||!std::isfinite(p.y)||!std::isfinite(p.z)) return;
+        min.x=std::min(min.x,p.x);min.y=std::min(min.y,p.y);min.z=std::min(min.z,p.z);
+        max.x=std::max(max.x,p.x);max.y=std::max(max.y,p.y);max.z=std::max(max.z,p.z);
+    }
+    bool Valid() const {return std::isfinite(min.x);}
+    RwV3d Center() const {return {(min.x+max.x)*.5f,(min.y+max.y)*.5f,(min.z+max.z)*.5f};}
+};
+RpAtomic* AddAtomicPosition(RpAtomic* atomic,void* bounds) {
+    static_cast<ActorBounds*>(bounds)->Add(RwFrameGetLTM(RpAtomicGetFrame(atomic))->pos);
+    return atomic;
+}
+void DeformCutsceneActor(CCutsceneObject* actor) {
+    // Heads copy their body's (already squashed) head bone when they render.
+    if(*reinterpret_cast<const uintptr_t*>(actor)==cutsceneHeadVtable) return;
+    auto* frame=RootFrame(actor);
+    if(!frame) return;
+    auto* model=actor->m_nModelIndex>=0?CModelInfo::GetModelInfo(actor->m_nModelIndex):nullptr;
+    const int type=model?int(model->m_nType):-1;
+    const bool humanoid=type==MODEL_INFO_PED;
+    // Same rule as ViceBounce: F6 covers everything in a cutscene, F10 people.
+    if(!cfg.enabled&&!(humanoid&&cfg.allPeople)) return;
+    // Body parts and prop pieces are atomics on animated child frames; the
+    // clump's root frame stays at the scene origin and is left out.
+    ActorBounds bounds;
+    if(actor->m_pRwObject->type==rpCLUMP) RpClumpForAllAtomics(actor->m_pRwClump,AddAtomicPosition,&bounds);
+    else bounds.Add(RwFrameGetLTM(frame)->pos);
+    if(!bounds.Valid()) return;
+    const auto pivot=bounds.Center();
+    const auto basis=UprightActorBasis(*RwFrameGetLTM(frame),pivot);
+    // People and cars keep their lowest part on the floor; props keep their pivot.
+    float drop=0;
+    if(humanoid||type==MODEL_INFO_VEHICLE) drop=(bounds.min.z-pivot.z)*(1-ActiveScale().vertical);
+    Deform(frame,basis,CVector(0,0,drop));
+    static bool logged=false;
+    if(!logged){Log("first cutscene actor rendered with bounce");logged=true;}
+}
+void BeforeRenderScene() {
+    if(!CCutsceneMgr::ms_running||cfg.amplitude<=0||Paused()) return;
+    const unsigned count=std::min(CCutsceneMgr::ms_numCutsceneObjs,50u);
+    for(unsigned i=0;i<count;++i)
+        if(auto* actor=CCutsceneMgr::ms_pCutsceneObjects[i]) DeformCutsceneActor(actor);
 }
 
 // ---- per-frame tick at the 3D/2D boundary -------------------------------
@@ -279,19 +335,20 @@ struct LibertyBounce {
         GetModuleFileNameA(reinterpret_cast<HMODULE>(&__ImageBase),module,MAX_PATH);
         std::string dir(module);dir=dir.substr(0,dir.find_last_of("\\/")+1);
         iniPath=dir+"LibertyBounce.ini";logPath=dir+"LibertyBounce.log";
-        Log(std::string("LibertyBounce 0.1.0 startup; ")+plugin::GetGameVersionName());
+        Log(std::string("LibertyBounce 0.2.0 startup;")+plugin::GetGameVersionName());
         // Every address used (SDK events, CReplay::Mode, CCutsceneMgr::ms_running) is v1.0.
         if(plugin::GetGameVersion()!=GAME_10EN) {Log("unsupported executable: LibertyBounce needs gta3.exe v1.0; disabled");return;}
         LoadConfig();
         savedFrames.reserve(256);
         plugin::Events::vehicleRenderEvent.before+=BeforeVehicleRender;
         plugin::Events::pedRenderEvent.before+=BeforePedRender;
+        plugin::Events::renderSceneEvent.before+=BeforeRenderScene;
         plugin::Events::drawingEvent.before+=Tick;
         plugin::Events::gameProcessEvent.before+=RestoreFrames;
         // Never leave a borrowed frame pointer alive across entity destruction.
         plugin::Events::vehicleDtorEvent.before+=[](CVehicle*){RestoreFrames();};
         plugin::Events::pedDtorEvent.before+=[](CPed*){RestoreFrames();};
-        Log("render hooks installed for cars, boats, trains, helicopters, planes and people");
+        Log("render hooks installed for cars, boats, trains, helicopters, planes, people and cutscene actors");
     }
 } instance;
 }

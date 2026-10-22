@@ -1,6 +1,6 @@
 # Packages bin\ into releases\LibertyBounce-<version>.zip. Run Build.ps1 and
 # build the importer (importer\BUILD.md) first.
-param([string]$Version = '0.1.0')
+param([string]$Version = '0.2.0')
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $stage = Join-Path $root "build\package"

@@ -24,7 +24,7 @@ If you enjoy LibertyBounce, please go and star ViceBounce too.
 
 ## Download
 
-Get `LibertyBounce-0.1.0.zip` from the [Releases page](../../releases) or from the [`releases`](releases) folder in this repository.
+Get `LibertyBounce-0.2.0.zip` from the [Releases page](../../releases) or from the [`releases`](releases) folder in this repository.
 
 ## Requirements
 
@@ -48,7 +48,7 @@ The same keys as ViceBounce:
 
 | Key | Action |
 |---|---|
-| F6 | Cars on/off |
+| F6 | Cars and cutscenes on/off |
 | F7 | Reload `LibertyBounce.ini` |
 | F8 | Boats, trains, helicopters and planes on/off |
 | F9 | Line the squash up with the beat you hear |
@@ -65,12 +65,14 @@ GTA III also uses Home (camera) and Page Up/Page Down (sniper zoom) by default, 
 
 Just before GTA III draws a vehicle or a ped (the `CEntity::Render` call at `0x474BD0`), LibertyBounce swaps the root RenderWare frame of its model for a squashed copy. Wheels, doors, limbs and weapons are child frames, so they follow. Cars and trains are shifted down so their wheels stay on the road; boats keep their waterline and aircraft their altitude.
 
+Cutscene actors are different: their model's root sits at the scene's origin while the animation moves the body around. So, just before the scene is drawn, each cutscene actor is squashed around the centre of its own body parts, with its feet kept on the floor. Heads are separate objects in GTA III cutscenes and rebuild themselves from the body's head bone, so they follow the squash.
+
 Every frame is restored at the 3D/2D boundary and again before `CGame::Process`, so physics, collision and missions never see the squash.
 
 ## Known limitations
 
 - Headlight and tail-light glows don't move with the squash.
-- Cutscene actors don't bounce.
+- Props in cutscenes (bags, guns, phones) squash around their own centre, so a held prop can drift slightly from the hand on each beat.
 
 ## Building from source
 
