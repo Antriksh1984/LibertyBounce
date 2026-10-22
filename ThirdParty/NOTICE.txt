@@ -1,0 +1,20 @@
+LibertyBounce contains unmodified third-party libraries; their licenses remain in force.
+
+ViceBounce by tek-95: https://github.com/tek-95/ViceBounce (MIT) - see LICENSE-ViceBounce.txt.
+Plugin-SDK: https://github.com/DK22Pac/plugin-sdk (zlib) - see Plugin-SDK-LICENSE.txt.
+
+LibertyBounceMusic.exe (the music importer) bundles:
+Python 3.12: https://www.python.org/downloads/source/ (PSF and bundled notices).
+NumPy 2.5.4: https://github.com/numpy/numpy (BSD and bundled component notices).
+SoundFile 0.14.0: https://pypi.org/project/soundfile/0.14.0/ (BSD-3-Clause).
+libsndfile 1.2.2, included via the official unmodified SoundFile Windows wheel:
+https://github.com/libsndfile/libsndfile/tree/1.2.2 (LGPL-2.1).
+The wheel also contains the external audio codec libraries listed in SoundFile's upstream build configuration;
+their sources include https://www.mpg123.de/download/ , https://lame.sourceforge.io/ and https://xiph.org/downloads/ .
+CFFI 2.1.1: https://pypi.org/project/cffi/2.1.1/ (MIT).
+pycparser 3.11: https://pypi.org/project/pycparser/3.11/ (BSD).
+PyInstaller 6.22.3: https://github.com/pyinstaller/pyinstaller (GPL with bootloader exception).
+
+The importer source and rebuild instructions are in source/importer (release zip) or importer/ (repository).
+You may rebuild the importer with modified/replacement versions of its libraries.
+There is no music, game executable, user configuration or audio cache in the release archive.
