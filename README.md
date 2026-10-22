@@ -6,6 +6,12 @@ Cars, boats, trains, helicopters, planes and people squash and stretch on every 
 
 LibertyBounce is a GTA III port of **[ViceBounce](https://www.moddb.com/mods/vicebounce)** for GTA Vice City.
 
+## Video
+
+[![LibertyBounce video](https://img.youtube.com/vi/CFFwla8HTvg/hqdefault.jpg)](https://youtu.be/CFFwla8HTvg)
+
+Watch it on YouTube: https://youtu.be/CFFwla8HTvg
+
 ## Thank you, tek-95
 
 LibertyBounce exists because of **tek-95**, the author of ViceBounce. Huge thanks for making such a fun mod and for releasing it as open source. The bounce maths, beat detection, beat map, music playback and music importer all come from ViceBounce; this project only rewrites the game hooks for GTA III.
