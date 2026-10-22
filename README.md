@@ -6,11 +6,15 @@ Cars, boats, trains, helicopters, planes and people squash and stretch on every 
 
 LibertyBounce is a GTA III port of **[ViceBounce](https://www.moddb.com/mods/vicebounce)** for GTA Vice City.
 
-## Video
+## Videos
 
 [![LibertyBounce video](https://img.youtube.com/vi/CFFwla8HTvg/hqdefault.jpg)](https://youtu.be/CFFwla8HTvg)
 
 Watch it on YouTube: https://youtu.be/CFFwla8HTvg
+
+[![LibertyBounce video 2](https://img.youtube.com/vi/FOkcpFPq97o/hqdefault.jpg)](https://youtu.be/FOkcpFPq97o)
+
+Watch it on YouTube: https://youtu.be/FOkcpFPq97o
 
 ## Thank you, tek-95
 
