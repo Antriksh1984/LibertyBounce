@@ -16,6 +16,10 @@ Watch it on YouTube: https://youtu.be/CFFwla8HTvg
 
 Watch it on YouTube: https://youtu.be/FOkcpFPq97o
 
+[![LibertyBounce video 3](https://img.youtube.com/vi/eSAAytorbWI/hqdefault.jpg)](https://youtu.be/eSAAytorbWI)
+
+Watch it on YouTube: https://youtu.be/eSAAytorbWI
+
 ## Features
 
 - Vehicles, pedestrians, the player and cutscene characters squash and stretch to the beat
