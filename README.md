@@ -14,7 +14,7 @@ Watch it on YouTube: https://youtu.be/CFFwla8HTvg
 
 ## Thank you, tek-95
 
-LibertyBounce exists because of **tek-95**, the author of ViceBounce. Huge thanks for making such a fun mod and for releasing it as open source. The bounce maths, beat detection, beat map, music playback and music importer all come from ViceBounce; this project only rewrites the game hooks for GTA III.
+LibertyBounce exists because of [@tek-95](https://github.com/tek-95), the author of ViceBounce. Huge thanks for making such a fun mod and for releasing it as open source. The bounce maths, beat detection, beat map, music playback and music importer all come from ViceBounce; this project only rewrites the game hooks for GTA III.
 
 - ViceBounce on ModDB: https://www.moddb.com/mods/vicebounce
 - ViceBounce on GitHub: https://github.com/tek-95/ViceBounce
@@ -81,10 +81,12 @@ Requirements: Visual Studio 2022 Build Tools (C++), [plugin-sdk](https://github.
 3. Build the importer as described in [`importer/BUILD.md`](importer/BUILD.md) and put `LibertyBounceMusic.exe` in `bin\`.
 4. Run `Package.ps1` to create `releases\LibertyBounce-<version>.zip`.
 
-## Credits and licence
+## Credits
 
-- **ViceBounce** by **tek-95**: https://github.com/tek-95/ViceBounce (MIT, see [`LICENSE-ViceBounce.txt`](LICENSE-ViceBounce.txt)).
-- **plugin-sdk** by DK22Pac and contributors: https://github.com/DK22Pac/plugin-sdk (zlib, see [`Plugin-SDK-LICENSE.txt`](Plugin-SDK-LICENSE.txt)).
-- Third-party libraries bundled in the importer are listed in [`ThirdParty/NOTICE.txt`](ThirdParty/NOTICE.txt).
+- [@tek-95](https://github.com/tek-95) — Created [ViceBounce](https://github.com/tek-95/ViceBounce) ([ModDB](https://www.moddb.com/mods/vicebounce)), the mod LibertyBounce is ported from: bounce maths, beat detection, music playback and the music importer (MIT, see [`LICENSE-ViceBounce.txt`](LICENSE-ViceBounce.txt))
+- [@DK22Pac](https://github.com/DK22Pac) — Created [plugin-sdk](https://github.com/DK22Pac/plugin-sdk), used for the GTA III hooks (zlib, see [`Plugin-SDK-LICENSE.txt`](Plugin-SDK-LICENSE.txt))
+- Third-party libraries bundled in the importer are listed in [`ThirdParty/NOTICE.txt`](ThirdParty/NOTICE.txt)
+
+## Licence
 
 LibertyBounce is released under the MIT licence; see [`LICENSE`](LICENSE). No music, game files or audio caches are included.
