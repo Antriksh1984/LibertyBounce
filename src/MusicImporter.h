@@ -50,6 +50,25 @@ public:
         if(picker) AllowSetForegroundWindow(child.dwProcessId);
         CloseHandle(child.hThread);process=child.hProcess;RememberSource();return true;
     }
+    // Background beat analysis of the game's radio stations (audioDirectory
+    // holds HEAD.WAV etc.). Results land in <directory>LibertyBounceRadio\.
+    bool StartRadio(const std::wstring& directory,const std::wstring& audioDirectory) {
+        if(Running()) return false;
+        const auto executable=directory+L"LibertyBounceMusic.exe";
+        if(GetFileAttributesW(executable.c_str())==INVALID_FILE_ATTRIBUTES) return false;
+        auto path=directory;
+        while(!path.empty()&&(path.back()==L'\\'||path.back()==L'/')) path.pop_back();
+        // A trailing backslash before the closing quote would escape it.
+        auto audio=audioDirectory;
+        while(!audio.empty()&&(audio.back()==L'\\'||audio.back()==L'/')) audio.pop_back();
+        std::wstring command=L"\""+executable+L"\" --scripts-dir \""+path+L"\" --quiet --radio \""+audio+L"\"";
+        STARTUPINFOW startup{};startup.cb=sizeof(startup);
+        startup.dwFlags=STARTF_USESHOWWINDOW;startup.wShowWindow=SW_HIDE;
+        PROCESS_INFORMATION child{};
+        // Below normal priority: the analysis must never make the game stutter.
+        if(!CreateProcessW(executable.c_str(),command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW|BELOW_NORMAL_PRIORITY_CLASS,nullptr,directory.c_str(),&startup,&child)) return false;
+        CloseHandle(child.hThread);process=child.hProcess;return true;
+    }
     // -1 still running/no process, 0 success, 2 user cancelled, 1 failure.
     int Poll() {
         if(!process) return -1;

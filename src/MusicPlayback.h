@@ -8,12 +8,21 @@ namespace libertybounce {
 class MusicPlayback {
     MCIDEVICEID device=0;
     std::wstring filename;
-    bool requested=false,attempted=false;
+    bool requested=false,attempted=false,paused=false;
     MCIERROR lastError=0;
 public:
     void Configure(bool enabled,const std::wstring& path) {
         if(device) mciSendCommandW(device,MCI_CLOSE,MCI_WAIT,0);
-        device=0;attempted=false;requested=enabled;filename=path;lastError=0;
+        device=0;attempted=false;requested=enabled;filename=path;lastError=0;paused=false;
+    }
+    // Silences the track while the in-game radio drives the bounce. Playing
+    // without MCI_FROM resumes where it stopped (waveaudio has no MCI_RESUME).
+    void SetPaused(bool pause) {
+        if(pause==paused) return;
+        paused=pause;
+        if(!device) return;
+        if(pause) mciSendCommandW(device,MCI_PAUSE,MCI_WAIT,0);
+        else {MCI_PLAY_PARMS play{};mciSendCommandW(device,MCI_PLAY,0,reinterpret_cast<DWORD_PTR>(&play));}
     }
     bool Position(double& position) {
         if(!requested||filename.empty()) return false;

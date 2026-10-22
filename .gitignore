@@ -17,3 +17,5 @@ __pycache__/
 LibertyBounceMusic/
 LibertyBounceImportStatus.json
 *.ini.before-music
+LibertyBounceRadio/
+LibertyBounceRadioStatus.json

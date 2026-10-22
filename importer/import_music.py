@@ -5,6 +5,10 @@ import argparse, ctypes, hashlib, json, os, re, sys, tempfile, time, traceback
 import numpy as np
 import soundfile as sf
 from beat_analysis import analyze, ANALYSIS_VERSION
+from radio_analysis import analyze_radio, RADIO_ANALYSIS_VERSION
+
+# GTA III's radio station files, in cMusicManager stream order (0 = HEAD).
+STATIONS = ['HEAD', 'CLASS', 'KJAH', 'RISE', 'LIPS', 'GAME', 'MSX', 'FLASH', 'CHAT']
 
 def sha256(path):
     digest = hashlib.sha256()
@@ -125,6 +129,52 @@ def import_track(source, scripts, bpm=None, offset_ms=None, force=False):
         update_ini(scripts / 'LibertyBounce.ini', values)
     return dict(**report, cached=cached, unchanged=bool(unchanged), music_file=str(wav), use_beat_map=use_map)
 
+def decode_mono(source):
+    """Whole file as a ~11 kHz mono signal (stations run up to an hour)."""
+    chunks = []; count = 0
+    with sf.SoundFile(source) as reader:
+        if reader.frames / reader.samplerate > 7200:
+            raise ValueError('Station files longer than two hours are not supported.')
+        rate = reader.samplerate; stride = max(1, round(rate / 11025))
+        while True:
+            block = reader.read(262144, dtype='float32', always_2d=True)
+            if not len(block): break
+            if not np.isfinite(block).all(): raise ValueError('Audio contains invalid sample values.')
+            mono = block.mean(axis=1)
+            chunks.append(mono[(-count) % stride::stride]); count += len(block)
+    return np.concatenate(chunks), rate / stride, count / rate
+
+def import_radio(audio, scripts):
+    """Beat maps for the game's radio stations; unchanged stations are skipped."""
+    audio = Path(audio).resolve(); folder = Path(scripts).resolve() / 'LibertyBounceRadio'
+    folder.mkdir(parents=True, exist_ok=True)
+    index_path = folder / 'stations.json'
+    try: index = json.loads(index_path.read_text('utf-8'))
+    except (OSError, ValueError): index = {}
+    results = {}
+    for name in STATIONS:
+        source = audio / (name + '.WAV')
+        if not source.is_file():
+            results[name] = 'missing'; continue
+        stat = source.stat()
+        key = dict(size=stat.st_size, mtime_ns=stat.st_mtime_ns, version=RADIO_ANALYSIS_VERSION)
+        target = folder / (name + '.txt')
+        if index.get(name, {}).get('key') == key and target.is_file():
+            results[name] = 'cached'; continue
+        mono, rate, duration = decode_mono(source)
+        analysis = analyze_radio(mono, rate, duration)
+        text = 'LibertyBounceBeats 2\n' + ''.join(
+            f'{beat:.4f} {weight:.3f}\n' for beat, weight in zip(analysis['beats_ms'], analysis['strengths']))
+        atomic_bytes(target, text.encode('ascii'))
+        index[name] = dict(key=key, duration_seconds=duration, beat_count=analysis['beat_count'],
+                           median_bpm=analysis['median_bpm'], strong_fraction=analysis['strong_fraction'])
+        # Saved after every station so an interrupted run keeps its progress.
+        atomic_bytes(index_path, json.dumps(index, indent=2).encode('utf-8'))
+        results[name] = 'analysed'
+    if all(state == 'missing' for state in results.values()):
+        raise ValueError('No GTA III radio station files found in ' + str(audio))
+    return results
+
 def game_window(handle, process_id):
     """Accept only the live game window explicitly passed by the ASI."""
     from ctypes import wintypes as w
@@ -183,9 +233,22 @@ def main():
     parser.add_argument('--if-changed', action='store_true'); parser.add_argument('--status-file', type=Path)
     parser.add_argument('--game-window', type=int, default=0, help=argparse.SUPPRESS)
     parser.add_argument('--game-pid', type=int, default=0, help=argparse.SUPPRESS)
+    parser.add_argument('--radio', type=Path, metavar='AUDIO_DIR',
+                        help="Build beat maps for GTA III's radio stations found in AUDIO_DIR.")
     args = parser.parse_args()
     home = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parents[1]
     scripts = args.scripts_dir or home
+    if args.radio:
+        status = args.status_file or scripts / 'LibertyBounceRadioStatus.json'
+        try:
+            results = import_radio(args.radio, scripts)
+            atomic_bytes(status, json.dumps(dict(ok=True, stations=results), indent=2).encode('utf-8'))
+            if sys.stdout: print(json.dumps(results, indent=2))
+            return 0
+        except Exception as error:
+            atomic_bytes(status, json.dumps(dict(ok=False, error=str(error)), indent=2).encode('utf-8'))
+            if sys.stderr: traceback.print_exc()
+            return 1
     if args.bpm is not None and (not np.isfinite(args.bpm) or not 30 <= args.bpm <= 240): parser.error('BPM must be 30..240')
     if args.offset_ms is not None and (not np.isfinite(args.offset_ms) or abs(args.offset_ms) > 3600000): parser.error('Invalid beat offset')
     status = args.status_file or scripts / 'LibertyBounceImportStatus.json'

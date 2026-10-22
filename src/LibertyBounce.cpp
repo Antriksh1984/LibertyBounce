@@ -49,9 +49,22 @@ MusicImporter importer;
 bool importRequested=false,useBeatMap=true;
 double musicSyncOffsetMs=0,firstBeatMs=0;
 bool musicEnabled=true,musicPending=false,musicErrorLogged=false,musicStartedLogged=false;
+// Radio following. Station maps are indexed like cMusicManager's streamed
+// sounds: 0 HEAD ... 8 CHAT (9 is the MP3 player, which can't be pre-analysed).
+constexpr const char* stationNames[]={"HEAD","CLASS","KJAH","RISE","LIPS","GAME","MSX","FLASH","CHAT"};
+std::array<BeatMap,std::size(stationNames)> stationMaps;
+MusicImporter radioImporter;
+bool radioEnabled=true;
+double radioSyncOffsetMs=0;
+int radioStation=-1;
+// How beat-driven the audio is right now (0..1); scales the bounce so radio
+// talk and adverts fade it out. Always 1 for your own song.
+double beatStrength=1;
 
-// Hotkeys are virtual-key codes from the INI; defaults match ViceBounce.
-struct Keys { int cars=VK_F6,reload=VK_F7,other=VK_F8,align=VK_F9,people=VK_F10,import=VK_F11,bpmUp=VK_PRIOR,bpmDown=VK_NEXT,ampUp=VK_HOME,ampDown=VK_END; } keys;
+// Hotkeys are virtual-key codes from the INI; defaults match ViceBounce, plus
+// F12 for custom music on/off. Radio following has no key unless one is set
+// (KeyRadio), so it can't be switched off by accident.
+struct Keys { int cars=VK_F6,reload=VK_F7,other=VK_F8,align=VK_F9,people=VK_F10,import=VK_F11,bpmUp=VK_PRIOR,bpmDown=VK_NEXT,ampUp=VK_HOME,ampDown=VK_END,customMusic=VK_F12,radio=0; } keys;
 
 void Log(const std::string& text) {
     std::ofstream out(logPath,std::ios::app);
@@ -70,7 +83,7 @@ bool Paused() {
 bool EffectActive(CVehicle* vehicle) {
     return vehicle&&VehicleEnabled(cfg,int(vehicle->m_nVehicleClass))&&cfg.amplitude>0&&!Paused();
 }
-Scale ActiveScale() { auto visual=cfg;visual.enabled=true;return GetScale(phase,visual); }
+Scale ActiveScale() { auto visual=cfg;visual.enabled=true;visual.amplitude*=beatStrength;return GetScale(phase,visual); }
 
 // ---- config -------------------------------------------------------------
 double ReadNumber(const char* name,const char* fallback,double lo,double hi) {
@@ -85,6 +98,7 @@ int ReadKey(const char* name,int fallback) {
     const long key=std::strtol(value,&end,0); // accepts 112 or 0x70
     return end!=value&&key>0&&key<256?int(key):fallback;
 }
+void LoadStationMaps();
 std::wstring BesideIni(const std::wstring& folder,const std::wstring& path) {
     if(!path.empty()&&path.find(L':')==std::wstring::npos&&path[0]!=L'\\'&&path[0]!=L'/') return folder+path;
     return path;
@@ -112,6 +126,10 @@ void LoadConfig(bool requestImport=true) {
     keys.bpmDown=ReadKey("KeyBpmDown",defaults.bpmDown);
     keys.ampUp=ReadKey("KeyAmplitudeUp",defaults.ampUp);
     keys.ampDown=ReadKey("KeyAmplitudeDown",defaults.ampDown);
+    keys.customMusic=ReadKey("KeyCustomMusic",defaults.customMusic);
+    keys.radio=ReadKey("KeyRadio",defaults.radio);
+    radioEnabled=ReadNumber("Radio","1",0,1)>=.5;
+    radioSyncOffsetMs=ReadNumber("RadioSyncOffsetMs","0",-60000,60000);
 
     wchar_t module[MAX_PATH]{},path[1024]{};
     GetModuleFileNameW(reinterpret_cast<HMODULE>(&__ImageBase),module,MAX_PATH);
@@ -127,6 +145,7 @@ void LoadConfig(bool requestImport=true) {
     importer.Configure(source,autoImport);
     importRequested=requestImport&&musicEnabled&&autoImport&&!source.empty();
     musicPending=true;musicErrorLogged=false;musicStartedLogged=false;
+    LoadStationMaps();
     Status("config loaded");
 }
 void SaveValue(const char* name,double value) {
@@ -137,6 +156,45 @@ bool Focused() {
     DWORD process=0;
     GetWindowThreadProcessId(GetForegroundWindow(),&process);
     return process==GetCurrentProcessId();
+}
+
+// ---- in-game radio -------------------------------------------------------
+// gta3.exe v1.0: the MusicManager and SampleManager instances, and
+// cSampleManager::GetStreamedFilePosition(stream), which returns the ms
+// position inside the streamed station file (0 when nothing is streaming).
+constexpr uintptr_t musicManagerAddress=0x8F3964,sampleManagerAddress=0x7341E0,getStreamedFilePositionAddress=0x568130;
+
+void LoadStationMaps() {
+    int loaded=0;
+    for(size_t i=0;i<stationMaps.size();++i) {
+        stationMaps[i]=BeatMap{};
+        std::ifstream input{std::filesystem::path(musicDirectory)/"LibertyBounceRadio"/(std::string(stationNames[i])+".txt")};
+        if(input&&stationMaps[i].Load(input)) ++loaded;
+    }
+    Log("radio beat maps loaded: "+std::to_string(loaded)+" of "+std::to_string(stationMaps.size())+" stations");
+}
+// cMusicManager::m_nCurrentStreamedSound: what the game streams on stream 0
+// (StartStreamedFile is always called with this byte). 0-8 are the radio
+// stations; ambience, police radio, mission and cutscene audio are higher.
+int StreamedSound() { return reinterpret_cast<const unsigned char*>(musicManagerAddress)[3]; }
+// Station whose beat map drives the bounce right now, or -1.
+int CurrentStation(double& position) {
+    if(!radioEnabled) return -1;
+    const int station=StreamedSound();
+    if(station<0||station>=int(stationMaps.size())||!stationMaps[station].Valid()) return -1;
+    using GetPositionFn=unsigned(__thiscall*)(void*,unsigned char);
+    const unsigned ms=reinterpret_cast<GetPositionFn>(getStreamedFilePositionAddress)(reinterpret_cast<void*>(sampleManagerAddress),0);
+    if(!ms) return -1;
+    position=double(ms);
+    return station;
+}
+void StartRadioAnalysis() {
+    // The game's own audio folder (gta3.exe's folder + "audio").
+    wchar_t exe[MAX_PATH]{};
+    GetModuleFileNameW(nullptr,exe,MAX_PATH);
+    std::wstring audio(exe);audio=audio.substr(0,audio.find_last_of(L"\\/")+1)+L"audio";
+    if(radioImporter.StartRadio(musicDirectory,audio)) Log("checking radio station beat maps in background");
+    else Log("radio analysis unavailable (LibertyBounceMusic.exe missing?)");
 }
 
 // ---- frame deformation -------------------------------------------------
@@ -283,16 +341,41 @@ void Tick() {
             else Log("beat map invalid/missing; using BPM and first beat instead");
         }
     }
-    double musicPosition=0;
-    const bool synced=music.Position(musicPosition);
-    if(synced) {
+    const int radioResult=radioImporter.Poll();
+    if(radioResult==0) {Log("radio analysis completed");LoadStationMaps();}
+    else if(radioResult>0) Log("radio analysis failed; see LibertyBounceRadioStatus.json");
+
+    // A playing car radio station takes over from your own song.
+    static int lastStreamed=-1;
+    if(StreamedSound()!=lastStreamed) {
+        lastStreamed=StreamedSound();
+        Log("game now streams sound "+std::to_string(lastStreamed)+(lastStreamed<int(stationMaps.size())?std::string(" (radio station ")+stationNames[lastStreamed]+")":std::string(" (not a radio station)")));
+    }
+    double radioPosition=0;
+    const int station=CurrentStation(radioPosition);
+    if(station!=radioStation) {
+        Log(station>=0?std::string("radio station ")+stationNames[station]+" drives the bounce":std::string("radio not followed; own music/BPM drives the bounce"));
+        radioStation=station;
+    }
+    music.SetPaused(station>=0);
+    double musicPosition=0,targetStrength=1;
+    const bool synced=station<0&&music.Position(musicPosition);
+    if(station>=0) {
+        const auto& map=stationMaps[station];
+        phase=map.Phase(radioPosition-radioSyncOffsetMs);
+        targetStrength=map.Strength(radioPosition-radioSyncOffsetMs);
+    } else if(synced) {
         phase=useBeatMap&&beatMap.Valid()?beatMap.Phase(musicPosition-musicSyncOffsetMs):MusicPhase(musicPosition,firstBeatMs,cfg.bpm);
         if(!musicStartedLogged){Log("music playback active; track position drives the bounce");musicStartedLogged=true;}
-    } else if(musicEnabled&&music.Error()&&!musicErrorLogged) {
+    } else if(!musicEnabled) {
+        targetStrength=0; // custom music off and no radio: nothing to bounce to
+    } else if(music.Error()&&!musicErrorLogged) {
         Log("music unavailable MCI error="+std::to_string(music.Error())+"; bouncing at INI BPM instead");musicErrorLogged=true;
     }
+    // Ease towards the target over ~0.25 s so talk/music changes never pop.
+    beatStrength+=(targetStrength-beatStrength)*std::min(1.0,std::max(0.0,elapsed)*4);
 
-    const int watched[]={keys.cars,keys.other,keys.people,keys.align,keys.import,keys.bpmUp,keys.bpmDown,keys.ampUp,keys.ampDown,keys.reload};
+    const int watched[]={keys.cars,keys.other,keys.people,keys.align,keys.import,keys.bpmUp,keys.bpmDown,keys.ampUp,keys.ampDown,keys.reload,keys.radio,keys.customMusic};
     constexpr size_t count=std::size(watched);
     static std::array<bool,count> wasDown{};
     std::array<bool,count> pressed{};
@@ -301,13 +384,19 @@ void Tick() {
         pressed[i]=active&&down&&!wasDown[i];wasDown[i]=down;
     }
     if(!active) return;
-    if(!synced&&elapsed<=0.25) phase=AdvancePhase(phase,elapsed,cfg.bpm);
+    if(station<0&&!synced&&elapsed<=0.25) phase=AdvancePhase(phase,elapsed,cfg.bpm);
     // Ctrl+Shift+F11 belongs to OBS; only the bare import key opens the picker.
     const bool modifier=(GetAsyncKeyState(VK_SHIFT)&0x8000)||(GetAsyncKeyState(VK_CONTROL)&0x8000)||(GetAsyncKeyState(VK_MENU)&0x8000);
     if(pressed[0]){cfg.enabled=!cfg.enabled;SaveValue("Enabled",cfg.enabled);Status("cars toggle");}
     if(pressed[1]){cfg.otherVehicles=!cfg.otherVehicles;SaveValue("OtherVehicles",cfg.otherVehicles);Status("boats/trains/aircraft toggle");}
     if(pressed[2]){cfg.allPeople=!cfg.allPeople;SaveValue("AllPeople",cfg.allPeople);Status("all people toggle");}
-    if(pressed[3]){
+    if(pressed[3]&&station>=0){
+        // One offset for all stations: it corrects audio output latency.
+        const auto& map=stationMaps[station];
+        radioSyncOffsetMs=radioPosition-map.Nearest(radioPosition-radioSyncOffsetMs);
+        SaveValue("RadioSyncOffsetMs",radioSyncOffsetMs);
+        Status("current radio position marked as squash beat");
+    } else if(pressed[3]){
         phase=.5;
         if(synced){
             if(useBeatMap&&beatMap.Valid()) {
@@ -327,6 +416,13 @@ void Tick() {
         useBeatMap=false;SaveValue("MusicUseBeatMap",0);SaveValue("BPM",cfg.bpm);Status("manual tempo changed; beat map disabled");
     }
     if(pressed[7]||pressed[8]){cfg.amplitude=std::clamp(cfg.amplitude+(pressed[7]?0.025:-0.025),0.0,0.75);SaveValue("Amplitude",cfg.amplitude);Status("amplitude changed");}
+    if(pressed[10]){radioEnabled=!radioEnabled;SaveValue("Radio",radioEnabled);Log(radioEnabled?"radio following on":"radio following off");}
+    if(pressed[11]){
+        musicEnabled=!musicEnabled;SaveValue("MusicEnabled",musicEnabled);
+        if(musicEnabled) musicPending=true; // reopened above on the next frame
+        else music.Configure(false,L"");    // closes the track, so it stops
+        Log(musicEnabled?"custom music on":"custom music off; only the radio drives the bounce");
+    }
 }
 
 struct LibertyBounce {
@@ -335,10 +431,12 @@ struct LibertyBounce {
         GetModuleFileNameA(reinterpret_cast<HMODULE>(&__ImageBase),module,MAX_PATH);
         std::string dir(module);dir=dir.substr(0,dir.find_last_of("\\/")+1);
         iniPath=dir+"LibertyBounce.ini";logPath=dir+"LibertyBounce.log";
-        Log(std::string("LibertyBounce 0.2.0 startup;")+plugin::GetGameVersionName());
+        Log(std::string("LibertyBounce 0.3.0 startup; ")+plugin::GetGameVersionName());
         // Every address used (SDK events, CReplay::Mode, CCutsceneMgr::ms_running) is v1.0.
         if(plugin::GetGameVersion()!=GAME_10EN) {Log("unsupported executable: LibertyBounce needs gta3.exe v1.0; disabled");return;}
         LoadConfig();
+        // Cheap when nothing changed: the importer skips stations it has already analysed.
+        if(radioEnabled) StartRadioAnalysis();
         savedFrames.reserve(256);
         plugin::Events::vehicleRenderEvent.before+=BeforeVehicleRender;
         plugin::Events::pedRenderEvent.before+=BeforePedRender;

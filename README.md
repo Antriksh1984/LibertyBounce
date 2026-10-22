@@ -1,8 +1,8 @@
 # LibertyBounce
 
-Make classic **GTA III** bounce to your own music.
+Make classic **GTA III** bounce to your own music, or to the in-game radio.
 
-Cars, boats, trains, helicopters, planes and people squash and stretch on every beat of a song you choose. Pick an MP3, FLAC, WAV or OGG in game; the importer detects the beat and loops the track while you play.
+Cars, boats, trains, helicopters, planes and people squash and stretch on every beat of a song you choose. Pick an MP3, FLAC, WAV or OGG in game; the importer detects the beat and loops the track while you play. Get in a car with the radio on and everything bounces to the station you're listening to instead.
 
 LibertyBounce is a GTA III port of **[ViceBounce](https://www.moddb.com/mods/vicebounce)** for GTA Vice City.
 
@@ -16,9 +16,26 @@ Watch it on YouTube: https://youtu.be/CFFwla8HTvg
 
 Watch it on YouTube: https://youtu.be/FOkcpFPq97o
 
+## Features
+
+- Vehicles, pedestrians, the player and cutscene characters squash and stretch to the beat
+- Import your own music in game (MP3, FLAC, WAV, OGG) with automatic beat detection
+- Drivers and passengers bounce with their car; wheels and feet stay on the ground
+- Purely visual: physics, collisions and missions are unaffected
+- Separate toggles for cars and cutscenes, other vehicles, and people
+- Adjustable tempo and bounce strength, saved automatically
+- Same controls as ViceBounce, all remappable in the INI
+
+### Additional features (new in LibertyBounce)
+
+- **Bounces to the in-game radio:** in a car with the radio on, everything bounces to the station you're hearing, and switching station switches the beat
+- **Talk detection:** DJ chat, adverts and Chatterbox calm the bounce down instead of jerking it around
+- **Custom music on/off (F12):** turn your own song off to bounce only to the radio, or back on whenever you like
+- **Trains bounce too**, along with boats, helicopters and planes
+
 ## Thank you, tek-95
 
-LibertyBounce exists because of [@tek-95](https://github.com/tek-95), the author of ViceBounce. Huge thanks for making such a fun mod and for releasing it as open source. The bounce maths, beat detection, beat map, music playback and music importer all come from ViceBounce; this project only rewrites the game hooks for GTA III.
+LibertyBounce exists because of [@tek-95](https://github.com/tek-95), the author of ViceBounce. Huge thanks for making such a fun mod and for releasing it as open source. The bounce maths, beat detection, beat map, music playback and music importer all come from ViceBounce; this project rewrites the game hooks for GTA III and adds the radio features.
 
 - ViceBounce on ModDB: https://www.moddb.com/mods/vicebounce
 - ViceBounce on GitHub: https://github.com/tek-95/ViceBounce
@@ -28,7 +45,7 @@ If you enjoy LibertyBounce, please go and star ViceBounce too.
 
 ## Download
 
-Get `LibertyBounce-0.2.0.zip` from the [Releases page](../../releases) or from the [`releases`](releases) folder in this repository.
+Get `LibertyBounce-0.3.0.zip` from the [Releases page](../../releases) or from the [`releases`](releases) folder in this repository.
 
 ## Requirements
 
@@ -58,10 +75,21 @@ The same keys as ViceBounce:
 | F9 | Line the squash up with the beat you hear |
 | F10 | All people, including the player, on/off |
 | F11 | Pick and import a song (not with Ctrl/Shift/Alt) |
+| F12 | Custom music on/off (off = only the car radio drives the bounce) |
 | Page Up / Page Down | Tempo +/- 5 BPM (turns off the detected beat map) |
 | Home / End | Bounce strength +/- 0.025 |
 
-Drivers and passengers always bounce with their vehicle. Changes made with hotkeys are saved to the INI. Every key can be changed with the `Key...` lines in `LibertyBounce.ini` (Windows virtual-key codes).
+Drivers and passengers always bounce with their vehicle. Changes made with hotkeys are saved to the INI.
+
+## Bouncing to the in-game radio
+
+Get in a car and turn the radio on: Liberty City bounces to whatever station you're listening to, and switching station switches the beat. Your own song pauses while the radio plays and comes back when you get out.
+
+Prefer the radio only? Press **F12** to turn your custom music off: your song stops, the radio drives the bounce, and nothing bounces when no radio is playing. Press F12 again to bring your song back. (Radio following itself can be turned off with `Radio=0` in the INI.)
+
+The first time you start the game, LibertyBounce analyses the nine radio stations in the background (about two minutes; the game stays playable and uses your own song or the fixed tempo until it's done). The results are saved in `scripts\LibertyBounceRadio\` and reused after that.
+
+DJ talk, adverts and Chatterbox are recognised as talk, so the bounce calms down there instead of jerking around. Very fast music (drum & bass, some hip-hop) bounces on every other beat. If the bounce feels slightly early or late against the radio, press F9 on a beat; the correction is shared by all stations. Every key can be changed with the `Key...` lines in `LibertyBounce.ini` (Windows virtual-key codes).
 
 GTA III also uses Home (camera) and Page Up/Page Down (sniper zoom) by default, just as Vice City does.
 
@@ -73,10 +101,13 @@ Cutscene actors are different: their model's root sits at the scene's origin whi
 
 Every frame is restored at the 3D/2D boundary and again before `CGame::Process`, so physics, collision and missions never see the squash.
 
+For the radio, LibertyBounce reads which station the game is streaming (`cMusicManager::m_nCurrentStreamedSound`) and how far into that station's file playback is (`cSampleManager::GetStreamedFilePosition`). Each station's beat map stores beat times plus a 0–1 strength: the share of the audio's energy below 200 Hz, which is high for music and close to zero for speech. Tempo is measured every two seconds, so each song on a station gets its own tempo.
+
 ## Known limitations
 
 - Headlight and tail-light glows don't move with the squash.
 - Props in cutscenes (bags, guns, phones) squash around their own centre, so a held prop can drift slightly from the hand on each beat.
+- The MP3 player station isn't followed (it plays your own files, which can't be analysed in advance); classical music on Double Clef bounces only gently.
 
 ## Building from source
 
